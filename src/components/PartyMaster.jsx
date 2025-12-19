@@ -9,7 +9,7 @@ export default function PartyMaster() {
     name: '',
     mobile_number: '',
     city: '',
-    grade: 'purchaser'
+    grade: 'purchase_party'
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -47,7 +47,7 @@ export default function PartyMaster() {
       if (insertError) throw insertError
 
       setSuccess('Party added successfully')
-      setFormData({ name: '', mobile_number: '', city: '', grade: 'purchaser' })
+      setFormData({ name: '', mobile_number: '', city: '', grade: 'purchase_party' })
       setShowForm(false)
       fetchParties()
     } catch (err) {
@@ -128,8 +128,8 @@ export default function PartyMaster() {
                 onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
                 required
               >
-                <option value="purchaser">Purchaser</option>
-                <option value="supplier">Supplier</option>
+                <option value="purchase_party">Purchase Party (I purchase from them)</option>
+                <option value="supply_party">Supply Party (I supply to them)</option>
               </select>
             </div>
             <button type="submit" className="btn-primary">Add Party</button>
@@ -159,7 +159,7 @@ export default function PartyMaster() {
                     <td>{party.name}</td>
                     <td>{party.mobile_number}</td>
                     <td>{party.city}</td>
-                    <td>{party.grade}</td>
+                    <td>{party.grade === 'purchase_party' ? 'Purchase Party' : 'Supply Party'}</td>
                     <td>
                       <button
                         className="btn-danger"

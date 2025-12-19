@@ -26,7 +26,8 @@ npm install
 
 1. Create a new project on [Supabase](https://supabase.com)
 2. Go to SQL Editor and run the SQL script from `supabase-schema.sql`
-3. Get your project URL and anon key from Settings > API
+3. If you have existing data with old party grades ('purchaser'/'supplier'), run `migration-update-party-grades.sql` to update them
+4. Get your project URL and anon key from Settings > API
 
 ### 3. Configure Environment Variables
 

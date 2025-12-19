@@ -22,7 +22,7 @@ export default function Payment() {
 
   async function fetchData() {
     try {
-      const partiesRes = await supabase.from('parties').select('*').eq('grade', 'supplier').order('name')
+      const partiesRes = await supabase.from('parties').select('*').eq('grade', 'purchase_party').order('name')
       const paymentsRes = await supabase.from('payments').select('*').order('created_at', { ascending: false })
 
       if (partiesRes.error) throw partiesRes.error

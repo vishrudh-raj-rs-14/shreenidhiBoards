@@ -33,7 +33,7 @@ export default function SupplyTransaction() {
       const partiesRes = await supabase
         .from('parties')
         .select('*')
-        .eq('grade', 'purchaser')
+        .eq('grade', 'supply_party')
         .order('name')
 
       if (partiesRes.error) throw partiesRes.error

@@ -24,7 +24,7 @@ export default function Reports() {
 
   async function fetchParties() {
     try {
-      const grade = reportType === 'purchase' ? 'supplier' : 'purchaser'
+      const grade = reportType === 'purchase' ? 'purchase_party' : 'supply_party'
       const { data, error } = await supabase
         .from('parties')
         .select('*')

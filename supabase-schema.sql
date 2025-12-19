@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS parties (
   name TEXT NOT NULL,
   mobile_number TEXT NOT NULL,
   city TEXT NOT NULL,
-  grade TEXT NOT NULL CHECK (grade IN ('purchaser', 'supplier')),
+  grade TEXT NOT NULL CHECK (grade IN ('purchase_party', 'supply_party')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

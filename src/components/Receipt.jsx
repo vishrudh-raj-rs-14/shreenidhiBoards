@@ -23,7 +23,7 @@ export default function Receipt() {
 
   async function fetchData() {
     try {
-      const partiesRes = await supabase.from('parties').select('*').eq('grade', 'purchaser').order('name')
+      const partiesRes = await supabase.from('parties').select('*').eq('grade', 'supply_party').order('name')
       const receiptsRes = await supabase.from('receipts').select('*').order('created_at', { ascending: false })
 
       if (partiesRes.error) throw partiesRes.error

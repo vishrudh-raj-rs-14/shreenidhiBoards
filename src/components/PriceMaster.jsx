@@ -21,9 +21,9 @@ export default function PriceMaster() {
     setLoading(true)
     try {
       // Filter parties based on price type
-      // Purchase prices: only suppliers (we buy from them)
-      // Supply prices: only purchasers (they buy from us)
-      const partyGrade = priceType === 'purchase' ? 'supplier' : 'purchaser'
+      // Purchase prices: only purchase parties (we buy from them)
+      // Supply prices: only supply parties (they buy from us)
+      const partyGrade = priceType === 'purchase' ? 'purchase_party' : 'supply_party'
       
       const [partiesRes, productsRes] = await Promise.all([
         supabase.from('parties').select('*').eq('grade', partyGrade).order('name'),

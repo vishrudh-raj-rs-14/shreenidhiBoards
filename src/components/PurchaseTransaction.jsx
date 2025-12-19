@@ -25,7 +25,7 @@ export default function PurchaseTransaction() {
   async function fetchData() {
     try {
       const [partiesRes, productsRes] = await Promise.all([
-        supabase.from('parties').select('*').eq('grade', 'supplier').order('name'),
+        supabase.from('parties').select('*').eq('grade', 'purchase_party').order('name'),
         supabase.from('products').select('*').eq('confirmed', true).order('product_name')
       ])
 
