@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
+import AdminPinPrompt from './AdminPinPrompt'
 
 export default function Expense() {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     voucher_number: '',
@@ -15,6 +17,9 @@ export default function Expense() {
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false)
+  const [adminAction, setAdminAction] = useState(null)
+  const [targetId, setTargetId] = useState(null)
 
   useEffect(() => {
     fetchExpenses()
@@ -47,13 +52,23 @@ export default function Expense() {
         amount: parseFloat(formData.amount)
       }
 
-      const { error: insertError } = await supabase
-        .from('expenses')
-        .insert([expenseData])
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from('expenses')
+          .update(expenseData)
+          .eq('id', editingId)
 
-      if (insertError) throw insertError
+        if (updateError) throw updateError
+        setSuccess('Expense updated successfully')
+      } else {
+        const { error: insertError } = await supabase
+          .from('expenses')
+          .insert([expenseData])
 
-      setSuccess('Expense added successfully')
+        if (insertError) throw insertError
+        setSuccess('Expense added successfully')
+      }
+
       setFormData({
         date: new Date().toISOString().split('T')[0],
         voucher_number: '',
@@ -63,27 +78,76 @@ export default function Expense() {
         expense_grade: ''
       })
       setShowForm(false)
+      setEditingId(null)
       fetchExpenses()
     } catch (err) {
-      setError(err.message || 'Failed to add expense')
+      setError(err.message || 'Failed to save expense')
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Are you sure you want to delete this expense?')) return
+  function handleEdit(expense) {
+    setEditingId(expense.id)
+    setFormData({
+      date: expense.date,
+      voucher_number: expense.voucher_number,
+      pay_to: expense.pay_to,
+      amount: expense.amount.toString(),
+      description: expense.description || '',
+      expense_grade: expense.expense_grade
+    })
+    setShowForm(true)
+  }
 
-    try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', id)
+  function handleCancelEdit() {
+    setEditingId(null)
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      voucher_number: '',
+      pay_to: '',
+      amount: '',
+      description: '',
+      expense_grade: ''
+    })
+    setShowForm(false)
+  }
 
-      if (error) throw error
-      fetchExpenses()
-      setSuccess('Expense deleted successfully')
-    } catch (err) {
-      setError('Failed to delete expense')
+  function handleDeleteClick(id) {
+    setTargetId(id)
+    setAdminAction('delete')
+    setShowAdminPrompt(true)
+  }
+
+  function handleEditClick(id) {
+    setTargetId(id)
+    setAdminAction('edit')
+    setShowAdminPrompt(true)
+  }
+
+  async function handleAdminAction() {
+    if (adminAction === 'delete') {
+      try {
+        const { error } = await supabase
+          .from('expenses')
+          .delete()
+          .eq('id', targetId)
+
+        if (error) throw error
+        setSuccess('Expense deleted successfully')
+        fetchExpenses()
+      } catch (err) {
+        setError('Failed to delete expense')
+      }
+    } else if (adminAction === 'edit') {
+      const expense = expenses.find(e => e.id === targetId)
+      if (expense) {
+        handleEdit(expense)
+      }
     }
+
+    setShowAdminPrompt(false)
+    setTargetId(null)
+    setAdminAction(null)
+    sessionStorage.removeItem('admin_authenticated')
   }
 
   if (loading) return <div className="loading">Loading...</div>
@@ -102,7 +166,7 @@ export default function Expense() {
 
       {showForm && (
         <div className="card">
-          <h2 style={{ marginBottom: '1rem' }}>Add New Expense</h2>
+          <h2 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Expense' : 'Add New Expense'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="date">Date *</label>
@@ -199,13 +263,22 @@ export default function Expense() {
                     <td>{expense.expense_grade}</td>
                     <td>{expense.description || '-'}</td>
                     <td>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                        onClick={() => handleDelete(expense.id)}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleEditClick(expense.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-danger"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleDeleteClick(expense.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -214,6 +287,18 @@ export default function Expense() {
           </div>
         )}
       </div>
+
+      {showAdminPrompt && (
+        <AdminPinPrompt
+          onSuccess={handleAdminAction}
+          onCancel={() => {
+            setShowAdminPrompt(false)
+            setTargetId(null)
+            setAdminAction(null)
+          }}
+          action={adminAction === 'delete' ? 'delete this expense' : 'edit this expense'}
+        />
+      )}
     </div>
   )
 }

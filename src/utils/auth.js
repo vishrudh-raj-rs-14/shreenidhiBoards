@@ -22,7 +22,7 @@ export async function setInitialPin(pin) {
     // Update existing PIN
     const { error: updateError } = await supabase
       .from('app_config')
-      .update({ pin_hash: pinHash })
+      .update({ pin_hash: pinHash, updated_at: new Date().toISOString() })
       .eq('id', data.id)
     return { error: updateError }
   } else {
@@ -32,6 +32,50 @@ export async function setInitialPin(pin) {
       .insert({ pin_hash: pinHash })
     return { error: insertError }
   }
+}
+
+export async function setAdminPin(adminPin) {
+  const adminPinHash = await hashPin(adminPin)
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('id')
+    .limit(1)
+    .single()
+
+  if (data) {
+    const { error: updateError } = await supabase
+      .from('app_config')
+      .update({ admin_pin_hash: adminPinHash, updated_at: new Date().toISOString() })
+      .eq('id', data.id)
+    return { error: updateError }
+  } else {
+    return { error: { message: 'Please set main PIN first' } }
+  }
+}
+
+export async function verifyAdminPin(adminPin) {
+  const adminPinHash = await hashPin(adminPin)
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('admin_pin_hash')
+    .limit(1)
+    .single()
+
+  if (error || !data || !data.admin_pin_hash) {
+    return false
+  }
+
+  return data.admin_pin_hash === adminPinHash
+}
+
+export async function checkAdminPinExists() {
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('admin_pin_hash')
+    .limit(1)
+    .single()
+
+  return !error && data && data.admin_pin_hash !== null
 }
 
 export async function verifyPin(pin) {

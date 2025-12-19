@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
 import { generatePurchaseInvoice } from '../utils/pdf'
+import AdminPinPrompt from './AdminPinPrompt'
 
 export default function PurchaseTransaction() {
   const [parties, setParties] = useState([])
   const [products, setProducts] = useState([])
+  const [transactions, setTransactions] = useState([])
   const [formData, setFormData] = useState({
     party_id: '',
     purchase_voucher_number: '',
@@ -17,6 +19,8 @@ export default function PurchaseTransaction() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [previewData, setPreviewData] = useState(null)
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -24,16 +28,27 @@ export default function PurchaseTransaction() {
 
   async function fetchData() {
     try {
-      const [partiesRes, productsRes] = await Promise.all([
+      const [partiesRes, productsRes, transactionsRes] = await Promise.all([
         supabase.from('parties').select('*').eq('grade', 'purchase_party').order('name'),
-        supabase.from('products').select('*').eq('confirmed', true).order('product_name')
+        supabase.from('products').select('*').eq('confirmed', true).order('product_name'),
+        supabase.from('purchase_transactions')
+          .select('*, parties:party_id (name)')
+          .order('created_at', { ascending: false })
       ])
 
       if (partiesRes.error) throw partiesRes.error
       if (productsRes.error) throw productsRes.error
+      if (transactionsRes.error) throw transactionsRes.error
 
       setParties(partiesRes.data || [])
       setProducts(productsRes.data || [])
+      
+      // Join with parties for display
+      const transactionsWithParty = (transactionsRes.data || []).map(t => {
+        const party = partiesRes.data.find(p => p.id === t.party_id)
+        return { ...t, parties: party ? { name: party.name } : null }
+      })
+      setTransactions(transactionsWithParty)
     } catch (err) {
       setError('Failed to fetch data')
     } finally {
@@ -191,10 +206,39 @@ export default function PurchaseTransaction() {
       setFormData({ party_id: '', purchase_voucher_number: '', vehicle_number: '', is_built: false })
       setItems([{ product_id: '', weight: '' }])
       setPreviewData(null)
+      fetchData() // Refresh transactions list
     } catch (err) {
       setError(err.message || 'Failed to save transaction')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  function handleDeleteClick(id) {
+    setDeleteTargetId(id)
+    setShowAdminPrompt(true)
+  }
+
+  async function handleDelete() {
+    if (!deleteTargetId) return
+
+    try {
+      const { error } = await supabase
+        .from('purchase_transactions')
+        .delete()
+        .eq('id', deleteTargetId)
+
+      if (error) throw error
+
+      setSuccess('Transaction deleted successfully')
+      setShowAdminPrompt(false)
+      setDeleteTargetId(null)
+      sessionStorage.removeItem('admin_authenticated')
+      fetchData()
+    } catch (err) {
+      setError('Failed to delete transaction')
+      setShowAdminPrompt(false)
+      setDeleteTargetId(null)
     }
   }
 
@@ -361,6 +405,59 @@ export default function PurchaseTransaction() {
             </div>
           </div>
         </div>
+      )}
+
+      <div className="card" style={{ marginTop: '2rem' }}>
+        <h2 className="section-title">Purchase Transactions</h2>
+        {transactions.length === 0 ? (
+          <div className="empty-state">No purchase transactions recorded yet</div>
+        ) : (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Party</th>
+                  <th>Voucher Number</th>
+                  <th>Vehicle Number</th>
+                  <th>Built</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((transaction) => (
+                  <tr key={transaction.id}>
+                    <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
+                    <td>{transaction.parties?.name || 'N/A'}</td>
+                    <td>{transaction.purchase_voucher_number}</td>
+                    <td>{transaction.vehicle_number || '-'}</td>
+                    <td>{transaction.is_built ? 'Yes' : 'No'}</td>
+                    <td>
+                      <button
+                        className="btn-danger"
+                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                        onClick={() => handleDeleteClick(transaction.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showAdminPrompt && (
+        <AdminPinPrompt
+          onSuccess={handleDelete}
+          onCancel={() => {
+            setShowAdminPrompt(false)
+            setDeleteTargetId(null)
+          }}
+          action="delete this transaction"
+        />
       )}
     </div>
   )

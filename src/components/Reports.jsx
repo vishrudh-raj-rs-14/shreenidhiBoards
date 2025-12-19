@@ -367,28 +367,47 @@ export default function Reports() {
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Type</th>
                   <th>Description</th>
                   <th>Voucher</th>
-                  <th>Amount</th>
+                  <th style={{ color: '#4CAF50', textAlign: 'right' }}>Credit</th>
+                  <th style={{ color: '#f44336', textAlign: 'right' }}>Debit</th>
                 </tr>
               </thead>
               <tbody>
                 {reportData.map((item, index) => (
-                  <tr key={index} style={{ color: item.type === 'credit' ? '#4CAF50' : '#f44336' }}>
+                  <tr key={index}>
                     <td>{new Date(item.date).toLocaleDateString()}</td>
-                    <td style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>{item.type}</td>
                     <td>{item.description}</td>
                     <td>{item.voucher}</td>
-                    <td style={{ fontWeight: 'bold' }}>
-                      {item.type === 'credit' ? '+' : '-'}₹{item.amount.toFixed(2)}
+                    <td style={{ 
+                      textAlign: 'right', 
+                      fontWeight: 'bold',
+                      color: item.type === 'credit' ? '#4CAF50' : 'transparent'
+                    }}>
+                      {item.type === 'credit' ? `₹${item.amount.toFixed(2)}` : '-'}
+                    </td>
+                    <td style={{ 
+                      textAlign: 'right', 
+                      fontWeight: 'bold',
+                      color: item.type === 'debit' ? '#f44336' : 'transparent'
+                    }}>
+                      {item.type === 'debit' ? `₹${item.amount.toFixed(2)}` : '-'}
                     </td>
                   </tr>
                 ))}
                 <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5', fontSize: '1.1rem' }}>
-                  <td colSpan="4" style={{ textAlign: 'right' }}>Balance:</td>
-                  <td style={{ color: balance >= 0 ? '#4CAF50' : '#f44336' }}>
-                    ₹{balance.toFixed(2)}
+                  <td colSpan="3" style={{ textAlign: 'right' }}>Balance:</td>
+                  <td style={{ 
+                    textAlign: 'right',
+                    color: balance >= 0 ? '#4CAF50' : 'transparent'
+                  }}>
+                    {balance >= 0 ? `₹${balance.toFixed(2)}` : '-'}
+                  </td>
+                  <td style={{ 
+                    textAlign: 'right',
+                    color: balance < 0 ? '#f44336' : 'transparent'
+                  }}>
+                    {balance < 0 ? `₹${Math.abs(balance).toFixed(2)}` : '-'}
                   </td>
                 </tr>
               </tbody>

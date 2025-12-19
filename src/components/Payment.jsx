@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
+import AdminPinPrompt from './AdminPinPrompt'
 
 export default function Payment() {
   const [parties, setParties] = useState([])
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     party_id: '',
@@ -15,6 +17,9 @@ export default function Payment() {
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false)
+  const [adminAction, setAdminAction] = useState(null)
+  const [targetId, setTargetId] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -54,13 +59,23 @@ export default function Payment() {
         paid_amount: parseFloat(formData.paid_amount)
       }
 
-      const { error: insertError } = await supabase
-        .from('payments')
-        .insert([paymentData])
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from('payments')
+          .update(paymentData)
+          .eq('id', editingId)
 
-      if (insertError) throw insertError
+        if (updateError) throw updateError
+        setSuccess('Payment updated successfully')
+      } else {
+        const { error: insertError } = await supabase
+          .from('payments')
+          .insert([paymentData])
 
-      setSuccess('Payment added successfully')
+        if (insertError) throw insertError
+        setSuccess('Payment added successfully')
+      }
+
       setFormData({
         date: new Date().toISOString().split('T')[0],
         party_id: '',
@@ -69,28 +84,76 @@ export default function Payment() {
         description: ''
       })
       setShowForm(false)
+      setEditingId(null)
       fetchData()
     } catch (err) {
-      setError(err.message || 'Failed to add payment')
+      setError(err.message || 'Failed to save payment')
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Are you sure you want to delete this payment?')) return
-
-    try {
-      const { error } = await supabase
-        .from('payments')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
-      fetchData()
-      setSuccess('Payment deleted successfully')
-    } catch (err) {
-      setError('Failed to delete payment')
-    }
+  function handleEdit(payment) {
+    setEditingId(payment.id)
+    setFormData({
+      date: payment.date,
+      party_id: payment.party_id,
+      paid_amount: payment.paid_amount.toString(),
+      mode: payment.mode,
+      description: payment.description || ''
+    })
+    setShowForm(true)
   }
+
+  function handleCancelEdit() {
+    setEditingId(null)
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      party_id: '',
+      paid_amount: '',
+      mode: 'cash',
+      description: ''
+    })
+    setShowForm(false)
+  }
+
+  function handleDeleteClick(id) {
+    setTargetId(id)
+    setAdminAction('delete')
+    setShowAdminPrompt(true)
+  }
+
+  function handleEditClick(id) {
+    setTargetId(id)
+    setAdminAction('edit')
+    setShowAdminPrompt(true)
+  }
+
+  async function handleAdminAction() {
+    if (adminAction === 'delete') {
+      try {
+        const { error } = await supabase
+          .from('payments')
+          .delete()
+          .eq('id', targetId)
+
+        if (error) throw error
+        setSuccess('Payment deleted successfully')
+        fetchData()
+      } catch (err) {
+        setError('Failed to delete payment')
+      }
+    } else if (adminAction === 'edit') {
+      const payment = payments.find(p => p.id === targetId)
+      if (payment) {
+        handleEdit(payment)
+      }
+    }
+
+    setShowAdminPrompt(false)
+    setTargetId(null)
+    setAdminAction(null)
+    sessionStorage.removeItem('admin_authenticated')
+  }
+
 
   if (loading) return <div className="loading">Loading...</div>
 
@@ -108,7 +171,7 @@ export default function Payment() {
 
       {showForm && (
         <div className="card">
-          <h2 style={{ marginBottom: '1rem' }}>Add New Payment</h2>
+          <h2 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Payment' : 'Add New Payment'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="date">Date *</label>
@@ -198,13 +261,22 @@ export default function Payment() {
                     <td>{payment.mode}</td>
                     <td>{payment.description || '-'}</td>
                     <td>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                        onClick={() => handleDelete(payment.id)}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleEditClick(payment.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-danger"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleDeleteClick(payment.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -213,6 +285,18 @@ export default function Payment() {
           </div>
         )}
       </div>
+
+      {showAdminPrompt && (
+        <AdminPinPrompt
+          onSuccess={handleAdminAction}
+          onCancel={() => {
+            setShowAdminPrompt(false)
+            setTargetId(null)
+            setAdminAction(null)
+          }}
+          action={adminAction === 'delete' ? 'delete this payment' : 'edit this payment'}
+        />
+      )}
     </div>
   )
 }

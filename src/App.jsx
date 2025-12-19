@@ -11,7 +11,8 @@ import Receipt from './components/Receipt'
 import Payment from './components/Payment'
 import Expense from './components/Expense'
 import Reports from './components/Reports'
-import { checkPinExists } from './utils/auth'
+import { checkPinExists, checkAdminPinExists } from './utils/auth'
+import AdminPinSetup from './components/AdminPinSetup'
 
 function Navigation() {
   const location = useLocation()
@@ -36,6 +37,7 @@ function Navigation() {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [pinExists, setPinExists] = useState(null)
+  const [adminPinExists, setAdminPinExists] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -45,6 +47,12 @@ function App() {
   async function checkAuth() {
     const exists = await checkPinExists()
     setPinExists(exists)
+    
+    if (exists) {
+      const adminExists = await checkAdminPinExists()
+      setAdminPinExists(adminExists)
+    }
+    
     setLoading(false)
     
     // Check if authenticated in session storage
@@ -64,6 +72,10 @@ function App() {
 
   if (!isAuthenticated) {
     return <PinLogin onLogin={() => setIsAuthenticated(true)} />
+  }
+
+  if (!adminPinExists) {
+    return <AdminPinSetup onSetup={() => setAdminPinExists(true)} />
   }
 
   return (

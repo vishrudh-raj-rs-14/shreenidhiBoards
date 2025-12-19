@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
+import AdminPinPrompt from './AdminPinPrompt'
 
 export default function Receipt() {
   const [parties, setParties] = useState([])
   const [receipts, setReceipts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     party_id: '',
@@ -16,6 +18,9 @@ export default function Receipt() {
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false)
+  const [adminAction, setAdminAction] = useState(null)
+  const [targetId, setTargetId] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -55,13 +60,23 @@ export default function Receipt() {
         amount: parseFloat(formData.amount)
       }
 
-      const { error: insertError } = await supabase
-        .from('receipts')
-        .insert([receiptData])
+      if (editingId) {
+        const { error: updateError } = await supabase
+          .from('receipts')
+          .update(receiptData)
+          .eq('id', editingId)
 
-      if (insertError) throw insertError
+        if (updateError) throw updateError
+        setSuccess('Receipt updated successfully')
+      } else {
+        const { error: insertError } = await supabase
+          .from('receipts')
+          .insert([receiptData])
 
-      setSuccess('Receipt added successfully')
+        if (insertError) throw insertError
+        setSuccess('Receipt added successfully')
+      }
+
       setFormData({
         date: new Date().toISOString().split('T')[0],
         party_id: '',
@@ -71,27 +86,76 @@ export default function Receipt() {
         amount: ''
       })
       setShowForm(false)
+      setEditingId(null)
       fetchData()
     } catch (err) {
-      setError(err.message || 'Failed to add receipt')
+      setError(err.message || 'Failed to save receipt')
     }
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm('Are you sure you want to delete this receipt?')) return
+  function handleEdit(receipt) {
+    setEditingId(receipt.id)
+    setFormData({
+      date: receipt.date,
+      party_id: receipt.party_id,
+      receipt_number: receipt.receipt_number,
+      mode: receipt.mode,
+      description: receipt.description || '',
+      amount: receipt.amount.toString()
+    })
+    setShowForm(true)
+  }
 
-    try {
-      const { error } = await supabase
-        .from('receipts')
-        .delete()
-        .eq('id', id)
+  function handleCancelEdit() {
+    setEditingId(null)
+    setFormData({
+      date: new Date().toISOString().split('T')[0],
+      party_id: '',
+      receipt_number: '',
+      mode: 'cash',
+      description: '',
+      amount: ''
+    })
+    setShowForm(false)
+  }
 
-      if (error) throw error
-      fetchData()
-      setSuccess('Receipt deleted successfully')
-    } catch (err) {
-      setError('Failed to delete receipt')
+  function handleDeleteClick(id) {
+    setTargetId(id)
+    setAdminAction('delete')
+    setShowAdminPrompt(true)
+  }
+
+  function handleEditClick(id) {
+    setTargetId(id)
+    setAdminAction('edit')
+    setShowAdminPrompt(true)
+  }
+
+  async function handleAdminAction() {
+    if (adminAction === 'delete') {
+      try {
+        const { error } = await supabase
+          .from('receipts')
+          .delete()
+          .eq('id', targetId)
+
+        if (error) throw error
+        setSuccess('Receipt deleted successfully')
+        fetchData()
+      } catch (err) {
+        setError('Failed to delete receipt')
+      }
+    } else if (adminAction === 'edit') {
+      const receipt = receipts.find(r => r.id === targetId)
+      if (receipt) {
+        handleEdit(receipt)
+      }
     }
+
+    setShowAdminPrompt(false)
+    setTargetId(null)
+    setAdminAction(null)
+    sessionStorage.removeItem('admin_authenticated')
   }
 
   if (loading) return <div className="loading">Loading...</div>
@@ -110,7 +174,7 @@ export default function Receipt() {
 
       {showForm && (
         <div className="card">
-          <h2 style={{ marginBottom: '1rem' }}>Add New Receipt</h2>
+          <h2 style={{ marginBottom: '1rem' }}>{editingId ? 'Edit Receipt' : 'Add New Receipt'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label htmlFor="date">Date *</label>
@@ -212,13 +276,22 @@ export default function Receipt() {
                     <td>{receipt.mode}</td>
                     <td>{receipt.description || '-'}</td>
                     <td>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                        onClick={() => handleDelete(receipt.id)}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn-secondary"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleEditClick(receipt.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn-danger"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                          onClick={() => handleDeleteClick(receipt.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -227,6 +300,18 @@ export default function Receipt() {
           </div>
         )}
       </div>
+
+      {showAdminPrompt && (
+        <AdminPinPrompt
+          onSuccess={handleAdminAction}
+          onCancel={() => {
+            setShowAdminPrompt(false)
+            setTargetId(null)
+            setAdminAction(null)
+          }}
+          action={adminAction === 'delete' ? 'delete this receipt' : 'edit this receipt'}
+        />
+      )}
     </div>
   )
 }
