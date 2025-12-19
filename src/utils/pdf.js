@@ -201,12 +201,14 @@ export function generateReportPDF(reportData) {
   // Table header with better styling
   doc.setFontSize(10)
   doc.setFont(undefined, 'bold')
+  // Adjusted column widths to fit on page (A4 width is ~210mm, with margins ~170mm available)
+  // Using smaller widths to ensure all columns fit comfortably
   const colWidths = {
-    date: 35,
-    description: 80,
-    voucher: 30,
-    credit: 30,
-    debit: 30
+    date: 24,
+    description: 52,
+    voucher: 18,
+    credit: 28,
+    debit: 28
   }
   
   // Calculate column positions for proper alignment
@@ -218,6 +220,9 @@ export function generateReportPDF(reportData) {
     debit: margin + colWidths.date + colWidths.description + colWidths.voucher + colWidths.credit
   }
   
+  // Ensure the rightmost column doesn't exceed page width
+  const maxRightEdge = pageWidth - margin
+  
   // Header background (light gray)
   doc.setFillColor(240, 240, 240)
   doc.rect(margin, yPos - 5, pageWidth - 2 * margin, 8, 'F')
@@ -226,9 +231,11 @@ export function generateReportPDF(reportData) {
   doc.text('Description', colPositions.description, yPos)
   doc.text('Voucher', colPositions.voucher, yPos)
   doc.setTextColor(0, 150, 0) // Green for credit
-  doc.text('Credit', colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+  // Right-align credit column - position at right edge of column
+  doc.text('Credit', Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
   doc.setTextColor(200, 0, 0) // Red for debit
-  doc.text('Debit', colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+  // Right-align debit column - position at right edge of column
+  doc.text('Debit', Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
   doc.setTextColor(0, 0, 0) // Reset to black
   yPos += 8
 
@@ -251,9 +258,9 @@ export function generateReportPDF(reportData) {
       doc.text('Description', colPositions.description, yPos)
       doc.text('Voucher', colPositions.voucher, yPos)
       doc.setTextColor(0, 150, 0)
-      doc.text('Credit', colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+      doc.text('Credit', Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
       doc.setTextColor(200, 0, 0)
-      doc.text('Debit', colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+      doc.text('Debit', Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
       doc.setTextColor(0, 0, 0)
       yPos += 8
       doc.setFont(undefined, 'normal')
@@ -275,13 +282,13 @@ export function generateReportPDF(reportData) {
     
     if (item.type === 'credit') {
       doc.setTextColor(0, 150, 0)
-      doc.text(`₹${item.amount.toFixed(2)}`, colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+      doc.text(`₹${item.amount.toFixed(2)}`, Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
       doc.setTextColor(0, 0, 0)
-      doc.text('-', colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+      doc.text('-', Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
     } else {
-      doc.text('-', colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+      doc.text('-', Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
       doc.setTextColor(200, 0, 0)
-      doc.text(`₹${item.amount.toFixed(2)}`, colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+      doc.text(`₹${item.amount.toFixed(2)}`, Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
       doc.setTextColor(0, 0, 0)
     }
     
@@ -311,13 +318,13 @@ export function generateReportPDF(reportData) {
   
   if (reportData.balance >= 0) {
     doc.setTextColor(0, 150, 0) // Green for positive balance
-    doc.text(`₹${reportData.balance.toFixed(2)}`, colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+    doc.text(`₹${reportData.balance.toFixed(2)}`, Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
     doc.setTextColor(0, 0, 0)
-    doc.text('-', colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+    doc.text('-', Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
   } else {
-    doc.text('-', colPositions.credit + colWidths.credit, yPos, { align: 'right' })
+    doc.text('-', Math.min(colPositions.credit + colWidths.credit, maxRightEdge), yPos, { align: 'right' })
     doc.setTextColor(200, 0, 0) // Red for negative balance
-    doc.text(`₹${Math.abs(reportData.balance).toFixed(2)}`, colPositions.debit + colWidths.debit, yPos, { align: 'right' })
+    doc.text(`₹${Math.abs(reportData.balance).toFixed(2)}`, Math.min(colPositions.debit + colWidths.debit, maxRightEdge), yPos, { align: 'right' })
     doc.setTextColor(0, 0, 0)
   }
 
