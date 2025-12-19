@@ -35,21 +35,91 @@ export async function setInitialPin(pin) {
 }
 
 export async function setAdminPin(adminPin) {
-  const adminPinHash = await hashPin(adminPin)
-  const { data, error } = await supabase
-    .from('app_config')
-    .select('id')
-    .limit(1)
-    .single()
-
-  if (data) {
-    const { error: updateError } = await supabase
+  console.log('setAdminPin called with PIN length:', adminPin?.length)
+  
+  try {
+    console.log('Setting admin PIN...')
+    
+    if (!adminPin) {
+      console.error('No admin PIN provided')
+      return { error: { message: 'Admin PIN is required' } }
+    }
+    
+    console.log('Hashing PIN...')
+    let adminPinHash
+    try {
+      adminPinHash = await hashPin(adminPin)
+      console.log('PIN hashed successfully')
+    } catch (hashError) {
+      console.error('Error hashing PIN:', hashError)
+      return { error: { message: 'Failed to hash PIN: ' + hashError.message } }
+    }
+    
+    console.log('Querying database...')
+    const { data, error: selectError } = await supabase
       .from('app_config')
-      .update({ admin_pin_hash: adminPinHash, updated_at: new Date().toISOString() })
+      .select('id')
+      .limit(1)
+      .single()
+
+    console.log('Query result:', { data, selectError, hasData: !!data })
+
+    // If there's an error and it's not "not found", return it
+    if (selectError) {
+      if (selectError.code === 'PGRST116') {
+        // Not found - user needs to set main PIN first
+        console.log('No config found, user needs to set main PIN first')
+        return { error: { message: 'Please set main PIN first' } }
+      } else {
+        console.error('Select error:', selectError)
+        return { error: selectError }
+      }
+    }
+
+    // If no data exists, user needs to set main PIN first
+    if (!data) {
+      console.log('No data found')
+      return { error: { message: 'Please set main PIN first' } }
+    }
+
+    console.log('Updating admin PIN for config ID:', data.id)
+    // Update the admin PIN
+    const { error: updateError, data: updateData } = await supabase
+      .from('app_config')
+      .update({ 
+        admin_pin_hash: adminPinHash, 
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', data.id)
-    return { error: updateError }
-  } else {
-    return { error: { message: 'Please set main PIN first' } }
+      .select()
+    
+    console.log('Update result:', { updateError, updateData })
+    
+    if (updateError) {
+      console.error('Update admin PIN error:', updateError)
+      // Check if it's a column missing error
+      const errorMsg = updateError.message || ''
+      const errorCode = updateError.code || ''
+      
+      if (errorMsg.includes('column') || 
+          errorMsg.includes('admin_pin_hash') ||
+          errorCode === '42703' ||
+          errorMsg.includes('does not exist')) {
+        return { 
+          error: { 
+            message: 'Database column missing. Please run the migration: ALTER TABLE app_config ADD COLUMN admin_pin_hash TEXT;' 
+          } 
+        }
+      }
+      return { error: updateError }
+    }
+    
+    // Success
+    console.log('Admin PIN set successfully')
+    return { error: null }
+  } catch (err) {
+    console.error('setAdminPin exception:', err)
+    return { error: { message: err.message || 'Failed to set admin PIN. Check console for details.' } }
   }
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { setAdminPin } from '../utils/auth'
+import { setAdminPin as setAdminPinFunction } from '../utils/auth'
 
 export default function AdminPinSetup({ onSetup }) {
   const [adminPin, setAdminPin] = useState('')
@@ -22,13 +22,55 @@ export default function AdminPinSetup({ onSetup }) {
     }
 
     setLoading(true)
-    const { error: setupError } = await setAdminPin(adminPin)
-    setLoading(false)
-
-    if (setupError) {
-      setError('Failed to set admin PIN. Please try again.')
-    } else {
-      onSetup()
+    setError('')
+    
+    try {
+      console.log('Calling setAdminPin with PIN:', adminPin ? '***' : 'null')
+      
+      // Verify the function exists
+      console.log('setAdminPinFunction type:', typeof setAdminPinFunction)
+      
+      if (typeof setAdminPinFunction !== 'function') {
+        console.error('setAdminPinFunction is not a function:', typeof setAdminPinFunction)
+        setError('Internal error: setAdminPin function not found')
+        setLoading(false)
+        return
+      }
+      
+      console.log('About to call setAdminPinFunction...')
+      const result = await setAdminPinFunction(adminPin)
+      console.log('setAdminPin returned:', result, 'Type:', typeof result)
+      
+      // Ensure result exists and has error property
+      if (result === undefined || result === null) {
+        console.error('setAdminPin returned undefined/null')
+        setError('Unexpected error: Function returned no value. Please check browser console and ensure database migration has been run.')
+        setLoading(false)
+        return
+      }
+      
+      if (typeof result !== 'object') {
+        console.error('Invalid result type from setAdminPin:', typeof result, result)
+        setError('Unexpected error: Invalid response format. Please check browser console.')
+        setLoading(false)
+        return
+      }
+      
+      const { error: setupError } = result
+      
+      if (setupError) {
+        console.error('Admin PIN setup error:', setupError)
+        const errorMessage = setupError.message || setupError.toString() || 'Failed to set admin PIN'
+        setError(errorMessage)
+      } else {
+        console.log('Admin PIN set successfully, calling onSetup')
+        onSetup()
+      }
+    } catch (err) {
+      console.error('Admin PIN setup exception:', err)
+      setError(err.message || 'An error occurred. Please check the browser console and ensure the database migration has been run.')
+    } finally {
+      setLoading(false)
     }
   }
 

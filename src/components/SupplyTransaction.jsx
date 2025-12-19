@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
 import { generateSupplyInvoice } from '../utils/pdf'
 import AdminPinPrompt from './AdminPinPrompt'
@@ -21,6 +21,8 @@ export default function SupplyTransaction() {
   const [previewData, setPreviewData] = useState(null)
   const [showAdminPrompt, setShowAdminPrompt] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState(null)
+  const [expandedTransactions, setExpandedTransactions] = useState(new Set())
+  const [transactionDetails, setTransactionDetails] = useState({})
 
   useEffect(() => {
     fetchData()
@@ -285,6 +287,67 @@ export default function SupplyTransaction() {
     }
   }
 
+  async function toggleTransaction(transactionId) {
+    const newExpanded = new Set(expandedTransactions)
+    
+    if (newExpanded.has(transactionId)) {
+      newExpanded.delete(transactionId)
+      setExpandedTransactions(newExpanded)
+    } else {
+      newExpanded.add(transactionId)
+      setExpandedTransactions(newExpanded)
+      
+      // Fetch transaction details if not already loaded
+      if (!transactionDetails[transactionId]) {
+        try {
+          const { data: items, error } = await supabase
+            .from('supply_transaction_items')
+            .select('*')
+            .eq('supply_transaction_id', transactionId)
+
+          if (error) throw error
+
+          // Get products
+          const productIds = items.map(item => item.product_id)
+          const { data: allProducts } = await supabase
+            .from('products')
+            .select('*')
+            .in('id', productIds.length > 0 ? productIds : ['00000000-0000-0000-0000-000000000000'])
+
+          const productsMap = new Map((allProducts || []).map(p => [p.id, p]))
+          
+          // Join products with items
+          const itemsWithProducts = items.map(item => ({
+            ...item,
+            products: productsMap.get(item.product_id)
+          }))
+
+          // Calculate totals
+          const transaction = transactions.find(t => t.id === transactionId)
+          let total = 0
+          
+          items.forEach(item => {
+            const amount = item.weight_kg * item.price_per_kg
+            if (transaction?.is_built && item.gst_percent) {
+              const gstAmount = (amount * item.gst_percent) / 100
+              total += amount + gstAmount
+            } else {
+              total += amount
+            }
+          })
+
+          setTransactionDetails({
+            ...transactionDetails,
+            [transactionId]: { items: itemsWithProducts, total }
+          })
+        } catch (err) {
+          console.error('Failed to fetch transaction details:', err)
+          setError('Failed to load transaction details')
+        }
+      }
+    }
+  }
+
   if (loading) return <div className="loading">Loading...</div>
 
   return (
@@ -454,23 +517,89 @@ export default function SupplyTransaction() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
-                    <td>{transaction.parties?.name || 'N/A'}</td>
-                    <td>{transaction.purchase_transactions?.purchase_voucher_number || 'N/A'}</td>
-                    <td>{transaction.is_built ? 'Yes' : 'No'}</td>
-                    <td>
-                      <button
-                        className="btn-danger"
-                        style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
-                        onClick={() => handleDeleteClick(transaction.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {transactions.map((transaction) => {
+                  const isExpanded = expandedTransactions.has(transaction.id)
+                  const details = transactionDetails[transaction.id]
+                  
+                  return (
+                    <React.Fragment key={transaction.id}>
+                      <tr style={{ cursor: 'pointer' }} onClick={() => toggleTransaction(transaction.id)}>
+                        <td>{new Date(transaction.created_at).toLocaleDateString()}</td>
+                        <td>{transaction.parties?.name || 'N/A'}</td>
+                        <td>{transaction.purchase_transactions?.purchase_voucher_number || 'N/A'}</td>
+                        <td>{transaction.is_built ? 'Yes' : 'No'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ fontSize: '1.2rem' }}>{isExpanded ? '▼' : '▶'}</span>
+                            <button
+                              className="btn-danger"
+                              style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteClick(transaction.id)
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && details && (
+                        <tr>
+                          <td colSpan="5" style={{ padding: '1rem', backgroundColor: 'var(--bg-secondary)' }}>
+                            <div style={{ marginLeft: '1rem' }}>
+                              <h4 style={{ marginBottom: '1rem' }}>Transaction Details</h4>
+                              <div className="table-container">
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>Product</th>
+                                      <th>Weight (kg)</th>
+                                      <th>Rate (₹/kg)</th>
+                                      <th>Amount</th>
+                                      {transaction.is_built && <th>GST</th>}
+                                      {transaction.is_built && <th>Total</th>}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {details.items.map((item, idx) => {
+                                      const amount = item.weight_kg * item.price_per_kg
+                                      const gstAmount = transaction.is_built && item.gst_percent ? (amount * item.gst_percent) / 100 : 0
+                                      const itemTotal = amount + gstAmount
+                                      
+                                      return (
+                                        <tr key={idx}>
+                                          <td>{item.products?.product_name || 'N/A'}</td>
+                                          <td>{item.weight_kg}</td>
+                                          <td>₹{item.price_per_kg}</td>
+                                          <td>₹{amount.toFixed(2)}</td>
+                                          {transaction.is_built && <td>{item.gst_percent ? `${item.gst_percent}%` : '-'}</td>}
+                                          {transaction.is_built && <td>₹{itemTotal.toFixed(2)}</td>}
+                                        </tr>
+                                      )
+                                    })}
+                                    <tr style={{ fontWeight: 'bold', backgroundColor: 'var(--bg-tertiary)' }}>
+                                      <td colSpan={transaction.is_built ? 4 : 3} style={{ textAlign: 'right' }}>Grand Total:</td>
+                                      <td style={{ color: 'var(--primary)', fontSize: '1.1rem' }}>₹{details.total.toFixed(2)}</td>
+                                      {transaction.is_built && <td></td>}
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {isExpanded && !details && (
+                        <tr>
+                          <td colSpan="5" style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                            Loading details...
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
               </tbody>
             </table>
           </div>
