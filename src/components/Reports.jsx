@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
+import { generateReportPDF } from '../utils/pdf'
 
 export default function Reports() {
   const [reportType, setReportType] = useState('purchase') // 'purchase' or 'sales'
@@ -254,30 +255,43 @@ export default function Reports() {
   function handleShare() {
     const party = parties.find(p => p.id === selectedPartyId)
     const reportTitle = `${reportType === 'purchase' ? 'Purchase' : 'Sales'} Report - ${party?.name || 'Unknown'}`
+    const dateRange = `${dateFilter.from || 'All'} to ${dateFilter.to || 'All'}`
+    const balance = calculateBalance()
+
+    // Generate PDF
+    const pdfData = {
+      title: reportTitle,
+      partyName: party?.name || 'Unknown',
+      dateRange: dateRange,
+      items: reportData,
+      balance: balance
+    }
+
+    const doc = generateReportPDF(pdfData)
+    const fileName = `${reportTitle.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`
     
-    let reportText = `${reportTitle}\n`
-    reportText += `Date Range: ${dateFilter.from || 'All'} to ${dateFilter.to || 'All'}\n\n`
+    // Generate PDF blob for sharing
+    const pdfBlob = doc.output('blob')
+    const file = new File([pdfBlob], fileName, { type: 'application/pdf' })
     
-    reportText += `${'Date'.padEnd(12)} ${'Type'.padEnd(8)} ${'Description'.padEnd(40)} ${'Amount'.padStart(12)}\n`
-    reportText += '-'.repeat(80) + '\n'
-    
-    reportData.forEach(item => {
-      const date = new Date(item.date).toLocaleDateString()
-      reportText += `${date.padEnd(12)} ${item.type.padEnd(8)} ${item.description.substring(0, 40).padEnd(40)} ₹${item.amount.toFixed(2).padStart(10)}\n`
-    })
-    
-    reportText += `\nBalance: ₹${calculateBalance().toFixed(2)}\n`
-    
-    // Copy to clipboard
-    if (navigator.share) {
-      navigator.share({
-        title: reportTitle,
-        text: reportText
-      }).catch(err => console.log('Error sharing', err))
+    // Try to share the PDF file
+    if (navigator.share && navigator.canShare) {
+      if (navigator.canShare({ files: [file] })) {
+        navigator.share({
+          title: reportTitle,
+          text: `${reportTitle}\nDate Range: ${dateRange}\nBalance: ₹${balance.toFixed(2)}`,
+          files: [file]
+        }).catch(err => {
+          console.log('Share failed, downloading instead:', err)
+          doc.save(fileName)
+        })
+      } else {
+        // Fallback to download
+        doc.save(fileName)
+      }
     } else {
-      navigator.clipboard.writeText(reportText).then(() => {
-        alert('Report copied to clipboard!')
-      })
+      // Fallback to download
+      doc.save(fileName)
     }
   }
 
