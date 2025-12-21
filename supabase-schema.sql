@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS app_config (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   pin_hash TEXT NOT NULL,
   admin_pin_hash TEXT,
+  price_pin_hash TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

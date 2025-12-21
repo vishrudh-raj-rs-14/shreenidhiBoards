@@ -11,8 +11,10 @@ import Receipt from './components/Receipt'
 import Payment from './components/Payment'
 import Expense from './components/Expense'
 import Reports from './components/Reports'
-import { checkPinExists, checkAdminPinExists } from './utils/auth'
+import Daybook from './components/Daybook'
+import { checkPinExists, checkAdminPinExists, checkPricePinExists } from './utils/auth'
 import AdminPinSetup from './components/AdminPinSetup'
+import PricePinSetup from './components/PricePinSetup'
 
 function Navigation() {
   const location = useLocation()
@@ -29,6 +31,7 @@ function Navigation() {
         <li><Link to="/payment" className={location.pathname === '/payment' ? 'active' : ''}>Payment</Link></li>
         <li><Link to="/expense" className={location.pathname === '/expense' ? 'active' : ''}>Expense</Link></li>
         <li><Link to="/reports" className={location.pathname === '/reports' ? 'active' : ''}>Reports</Link></li>
+        <li><Link to="/daybook" className={location.pathname === '/daybook' ? 'active' : ''}>Daybook</Link></li>
       </ul>
     </nav>
   )
@@ -38,6 +41,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [pinExists, setPinExists] = useState(null)
   const [adminPinExists, setAdminPinExists] = useState(null)
+  const [pricePinExists, setPricePinExists] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -49,8 +53,12 @@ function App() {
     setPinExists(exists)
     
     if (exists) {
-      const adminExists = await checkAdminPinExists()
+      const [adminExists, priceExists] = await Promise.all([
+        checkAdminPinExists(),
+        checkPricePinExists()
+      ])
       setAdminPinExists(adminExists)
+      setPricePinExists(priceExists)
     }
     
     setLoading(false)
@@ -78,6 +86,10 @@ function App() {
     return <AdminPinSetup onSetup={() => setAdminPinExists(true)} />
   }
 
+  if (!pricePinExists) {
+    return <PricePinSetup onSetup={() => setPricePinExists(true)} />
+  }
+
   return (
     <Router>
       <div className="container">
@@ -94,6 +106,7 @@ function App() {
             <Route path="/payment" element={<Payment />} />
             <Route path="/expense" element={<Expense />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/daybook" element={<Daybook />} />
           </Routes>
         </div>
       </div>

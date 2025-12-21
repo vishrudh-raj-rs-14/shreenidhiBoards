@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import React from 'react'
 import { supabase } from '../config/supabase'
 import { generateReportPDF } from '../utils/pdf'
 
@@ -10,6 +11,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' })
+  const [expandedTransactions, setExpandedTransactions] = useState(new Set())
 
   useEffect(() => {
     fetchParties()
@@ -91,23 +93,41 @@ export default function Reports() {
     const { data: allProducts } = await supabase.from('products').select('*')
     const productsMap = new Map((allProducts || []).map(p => [p.id, p]))
 
-    // Add purchase items as credit
+    // Add purchase transactions (transaction-wise, not item-wise)
     purchases?.forEach(purchase => {
       const purchaseItems = allItems?.filter(item => item.purchase_transaction_id === purchase.id) || []
+      let transactionTotal = 0
+      const items = []
+
       purchaseItems.forEach(item => {
         const product = productsMap.get(item.product_id)
         const amount = item.weight_kg * item.price_per_kg
         const gstAmount = purchase.is_built && item.gst_percent ? (amount * item.gst_percent) / 100 : 0
         const total = amount + gstAmount
+        transactionTotal += total
+        
+        items.push({
+          productName: product?.product_name || 'N/A',
+          weight: item.weight_kg,
+          price: item.price_per_kg,
+          amount: amount,
+          gst: gstAmount,
+          total: total
+        })
+      })
 
+      if (transactionTotal > 0) {
         reportItems.push({
           date: purchase.created_at,
           type: 'credit',
-          description: `Purchase - ${product?.product_name || 'N/A'} (Voucher: ${purchase.purchase_voucher_number})`,
-          amount: total,
-          voucher: purchase.purchase_voucher_number
+          description: `Purchase (Voucher: ${purchase.purchase_voucher_number})`,
+          amount: transactionTotal,
+          voucher: purchase.purchase_voucher_number,
+          transactionId: purchase.id,
+          items: items, // Store items for expansion
+          isTransaction: true
         })
-      })
+      }
     })
 
     // Get payments (Debit)
@@ -134,7 +154,8 @@ export default function Reports() {
         type: 'debit',
         description: `Payment - ${payment.mode}${payment.description ? `: ${payment.description}` : ''}`,
         amount: payment.paid_amount,
-        voucher: '-'
+        voucher: '-',
+        isTransaction: false
       })
     })
 
@@ -150,11 +171,7 @@ export default function Reports() {
     // Get supply transactions (Debit)
     let supplyQuery = supabase
       .from('supply_transactions')
-      .select(`
-        *,
-        purchase_transactions:purchase_transaction_id (purchase_voucher_number),
-        supply_transaction_items (*, products:product_id (product_name, gst_slab))
-      `)
+      .select('*')
       .eq('party_id', selectedPartyId)
 
     if (dateFilter.from) {
@@ -186,24 +203,43 @@ export default function Reports() {
     const productsMap = new Map((allProducts || []).map(p => [p.id, p]))
     const purchaseMap = new Map((purchaseTransactions || []).map(p => [p.id, p]))
 
-    // Add supply items as debit
+    // Add supply transactions (transaction-wise, not item-wise)
     supplies?.forEach(supply => {
       const supplyItems = allSupplyItems?.filter(item => item.supply_transaction_id === supply.id) || []
       const purchase = purchaseMap.get(supply.purchase_transaction_id)
+      let transactionTotal = 0
+      const items = []
+
       supplyItems.forEach(item => {
         const product = productsMap.get(item.product_id)
         const amount = item.weight_kg * item.price_per_kg
         const gstAmount = supply.is_built && item.gst_percent ? (amount * item.gst_percent) / 100 : 0
         const total = amount + gstAmount
+        transactionTotal += total
+        
+        items.push({
+          productName: product?.product_name || 'N/A',
+          weight: item.weight_kg,
+          price: item.price_per_kg,
+          amount: amount,
+          gst: gstAmount,
+          total: total
+        })
+      })
 
+      if (transactionTotal > 0) {
+        const voucher = purchase?.purchase_voucher_number || 'N/A'
         reportItems.push({
           date: supply.created_at,
           type: 'debit',
-          description: `Supply - ${product?.product_name || 'N/A'} (Voucher: ${purchase?.purchase_voucher_number || 'N/A'})`,
-          amount: total,
-          voucher: purchase?.purchase_voucher_number || '-'
+          description: `Supply (Voucher: ${voucher})`,
+          amount: transactionTotal,
+          voucher: voucher,
+          transactionId: supply.id,
+          items: items, // Store items for expansion
+          isTransaction: true
         })
-      })
+      }
     })
 
     // Get receipts (Credit)
@@ -230,7 +266,8 @@ export default function Reports() {
         type: 'credit',
         description: `Receipt - ${receipt.mode}${receipt.description ? `: ${receipt.description}` : ''} (Receipt: ${receipt.receipt_number})`,
         amount: receipt.amount,
-        voucher: receipt.receipt_number
+        voucher: receipt.receipt_number,
+        isTransaction: false
       })
     })
 
@@ -252,18 +289,34 @@ export default function Reports() {
     return balance
   }
 
+  function toggleTransaction(transactionId) {
+    const newExpanded = new Set(expandedTransactions)
+    if (newExpanded.has(transactionId)) {
+      newExpanded.delete(transactionId)
+    } else {
+      newExpanded.add(transactionId)
+    }
+    setExpandedTransactions(newExpanded)
+  }
+
   function handleShare() {
     const party = parties.find(p => p.id === selectedPartyId)
     const reportTitle = `${reportType === 'purchase' ? 'Purchase' : 'Sales'} Report - ${party?.name || 'Unknown'}`
     const dateRange = `${dateFilter.from || 'All'} to ${dateFilter.to || 'All'}`
     const balance = calculateBalance()
 
-    // Generate PDF
+    // Generate PDF - use transaction-wise data (items are not included in PDF)
     const pdfData = {
       title: reportTitle,
       partyName: party?.name || 'Unknown',
       dateRange: dateRange,
-      items: reportData,
+      items: reportData.map(item => ({
+        date: item.date,
+        type: item.type,
+        description: item.description,
+        amount: item.amount,
+        voucher: item.voucher
+      })),
       balance: balance
     }
 
@@ -388,27 +441,79 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {reportData.map((item, index) => (
-                  <tr key={index}>
-                    <td>{new Date(item.date).toLocaleDateString()}</td>
-                    <td>{item.description}</td>
-                    <td>{item.voucher}</td>
-                    <td style={{ 
-                      textAlign: 'right', 
-                      fontWeight: 'bold',
-                      color: item.type === 'credit' ? '#4CAF50' : 'transparent'
-                    }}>
-                      {item.type === 'credit' ? `₹${item.amount.toFixed(2)}` : '-'}
-                    </td>
-                    <td style={{ 
-                      textAlign: 'right', 
-                      fontWeight: 'bold',
-                      color: item.type === 'debit' ? '#f44336' : 'transparent'
-                    }}>
-                      {item.type === 'debit' ? `₹${item.amount.toFixed(2)}` : '-'}
-                    </td>
-                  </tr>
-                ))}
+                {reportData.map((item, index) => {
+                  const isExpanded = item.transactionId && expandedTransactions.has(item.transactionId)
+                  return (
+                    <React.Fragment key={index}>
+                      <tr>
+                        <td>{new Date(item.date).toLocaleDateString()}</td>
+                        <td>
+                          {item.isTransaction ? (
+                            <span 
+                              style={{ cursor: 'pointer', textDecoration: 'underline', color: '#1976d2' }}
+                              onClick={() => toggleTransaction(item.transactionId)}
+                            >
+                              {isExpanded ? '▼' : '▶'} {item.description}
+                            </span>
+                          ) : (
+                            item.description
+                          )}
+                        </td>
+                        <td>{item.voucher}</td>
+                        <td style={{ 
+                          textAlign: 'right', 
+                          fontWeight: 'bold',
+                          color: item.type === 'credit' ? '#4CAF50' : 'transparent'
+                        }}>
+                          {item.type === 'credit' ? `₹${item.amount.toFixed(2)}` : '-'}
+                        </td>
+                        <td style={{ 
+                          textAlign: 'right', 
+                          fontWeight: 'bold',
+                          color: item.type === 'debit' ? '#f44336' : 'transparent'
+                        }}>
+                          {item.type === 'debit' ? `₹${item.amount.toFixed(2)}` : '-'}
+                        </td>
+                      </tr>
+                      {isExpanded && item.items && item.items.length > 0 && (
+                        <tr style={{ backgroundColor: '#f9f9f9' }}>
+                          <td colSpan="5" style={{ paddingLeft: '2rem' }}>
+                            <table style={{ width: '100%', fontSize: '0.9rem' }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ textAlign: 'left' }}>Product</th>
+                                  <th style={{ textAlign: 'right' }}>Weight (kg)</th>
+                                  <th style={{ textAlign: 'right' }}>Rate</th>
+                                  <th style={{ textAlign: 'right' }}>Amount</th>
+                                  {item.items.some(i => i.gst > 0) && <th style={{ textAlign: 'right' }}>GST</th>}
+                                  <th style={{ textAlign: 'right' }}>Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {item.items.map((subItem, subIndex) => (
+                                  <tr key={subIndex}>
+                                    <td>{subItem.productName}</td>
+                                    <td style={{ textAlign: 'right' }}>{subItem.weight.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'right' }}>₹{subItem.price.toFixed(2)}</td>
+                                    <td style={{ textAlign: 'right' }}>₹{subItem.amount.toFixed(2)}</td>
+                                    {item.items.some(i => i.gst > 0) && (
+                                      <td style={{ textAlign: 'right' }}>
+                                        {subItem.gst > 0 ? `₹${subItem.gst.toFixed(2)}` : '-'}
+                                      </td>
+                                    )}
+                                    <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                      ₹{subItem.total.toFixed(2)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
                 <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5', fontSize: '1.1rem' }}>
                   <td colSpan="3" style={{ textAlign: 'right' }}>Balance:</td>
                   <td style={{ 

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../config/supabase'
+import { checkPricePinExists, verifyPricePin } from '../utils/auth'
+import PricePinPrompt from './PricePinPrompt'
 
 export default function PriceMaster() {
   const [parties, setParties] = useState([])
@@ -12,10 +14,22 @@ export default function PriceMaster() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [isPricePinAuthenticated, setIsPricePinAuthenticated] = useState(false)
+  const [showPricePinPrompt, setShowPricePinPrompt] = useState(false)
+  const [pendingEdit, setPendingEdit] = useState(null) // Store the edit action when PIN is required
 
   useEffect(() => {
     fetchData()
+    checkPricePinAuth()
   }, [priceType])
+
+  async function checkPricePinAuth() {
+    const pricePinExists = await checkPricePinExists()
+    if (pricePinExists) {
+      // Reset authentication when component mounts or price type changes
+      setIsPricePinAuthenticated(false)
+    }
+  }
 
   async function fetchData() {
     setLoading(true)
@@ -70,10 +84,39 @@ export default function PriceMaster() {
     }
   }
 
-  function startEdit(partyId, productId, currentPrice) {
+  async function startEdit(partyId, productId, currentPrice) {
+    // Check if price PIN is required and user is authenticated
+    const pricePinExists = await checkPricePinExists()
+    
+    if (pricePinExists && !isPricePinAuthenticated) {
+      // Store the edit action and show PIN prompt
+      setPendingEdit({ partyId, productId, currentPrice })
+      setShowPricePinPrompt(true)
+      return
+    }
+
+    // Proceed with edit
     const key = `${partyId}-${productId}`
     setEditingCell(key)
     setEditValue(currentPrice ? currentPrice.toString() : '')
+  }
+
+  function handlePricePinSuccess() {
+    setIsPricePinAuthenticated(true)
+    setShowPricePinPrompt(false)
+    
+    // Execute the pending edit if there is one
+    if (pendingEdit) {
+      const key = `${pendingEdit.partyId}-${pendingEdit.productId}`
+      setEditingCell(key)
+      setEditValue(pendingEdit.currentPrice ? pendingEdit.currentPrice.toString() : '')
+      setPendingEdit(null)
+    }
+  }
+
+  function handlePricePinCancel() {
+    setShowPricePinPrompt(false)
+    setPendingEdit(null)
   }
 
   function cancelEdit() {
@@ -135,6 +178,13 @@ export default function PriceMaster() {
 
   return (
     <div>
+      {showPricePinPrompt && (
+        <PricePinPrompt
+          onSuccess={handlePricePinSuccess}
+          onCancel={handlePricePinCancel}
+          action="update prices"
+        />
+      )}
       <div className="page-header">
         <h1>Price Master</h1>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
